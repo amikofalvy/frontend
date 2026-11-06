@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as MatterData from "../../../../../../src/data/matter";
 import type { DeviceRegistryEntry } from "../../../../../../src/data/device/device_registry";
 import type { ExtEntityRegistryEntry } from "../../../../../../src/data/entity/entity_registry";
@@ -54,6 +54,8 @@ describe("dialog-matter-add-device", () => {
   // As in dialog-matter-open-commissioning-window.test.ts: the flow only shows in private state.
   const internals = () => dialog as unknown as Record<string, unknown>;
   const step = () => internals()["_step"];
+  const close = () => (internals()["_dialogClosed"] as () => void)();
+  const addDevice = () => (internals()["_addDevice"] as () => Promise<void>)();
 
   const hassWith = (
     hasMatterStatusReport: boolean,
@@ -84,6 +86,8 @@ describe("dialog-matter-add-device", () => {
     ) as typeof dialog;
   });
 
+  afterEach(() => close());
+
   it("shows the added device after commissioning with a pasted code, which the app does not report on", async () => {
     dialog.hass = hassWith(true);
     dialog.showDialog();
@@ -91,10 +95,33 @@ describe("dialog-matter-add-device", () => {
     internals()["_pairingCode"] = "34970112332";
     commissionMatterDevice.mockResolvedValue({});
 
-    await (internals()["_addDevice"] as () => Promise<void>)();
+    await addDevice();
     reportNewDevice(shade);
 
     expect(step()).toBe("device_added");
+  });
+
+  it("keeps waiting for the app when a pasted-code commission from an earlier open finishes", async () => {
+    dialog.hass = hassWith(true);
+    dialog.showDialog();
+    internals()["_step"] = "generic";
+    internals()["_pairingCode"] = "34970112332";
+    let finish!: () => void;
+    commissionMatterDevice.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    const pending = addDevice();
+
+    close();
+    dialog.showDialog();
+    internals()["_step"] = "new";
+    finish();
+    await pending;
+    reportNewDevice(shade);
+
+    expect(step()).toBe("new");
   });
 
   it("waits for the app to finish when the app commissions the device", () => {
@@ -118,7 +145,6 @@ describe("dialog-matter-add-device", () => {
     dialog.showDialog();
 
     reportNewDevice(shade);
-    await Promise.resolve();
     dialog.hass = hassWith(false, [
       "binary_sensor.shade_door",
       "binary_sensor.shade_door_2",

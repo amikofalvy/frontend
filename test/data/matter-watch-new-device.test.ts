@@ -36,7 +36,7 @@ const shade = device("shade", [
 const lamp = device("lamp", [node("0000000000000040")]);
 const zigbee = device("zigbee", [["zha", "00:11:22:33"]]);
 
-/** Core gives every Matter node a `deviceid_` identifier, and its entities a unique ID that starts with it. */
+/** Core gives every Matter node a `deviceid_` identifier on the device it joins. */
 describe("watchForNewMatterDevice", () => {
   const callback = vi.fn();
 

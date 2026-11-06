@@ -291,10 +291,15 @@ class DialogMatterAddDevice extends LitElement {
   private async _addDevice() {
     const code = this._pairingCode;
     const savedStep = this._step;
+    // The element is reused, so a late answer must not reach a later open.
+    const session = this._unsub;
     try {
       this._step = "commissioning";
       await commissionMatterDevice(this.hass, code, true);
     } catch (_err) {
+      if (this._unsub !== session) {
+        return;
+      }
       showToast(this, {
         message: this.hass.localize(
           "ui.dialogs.matter-add-device.add_device_failed"
@@ -304,11 +309,10 @@ class DialogMatterAddDevice extends LitElement {
       this._step = savedStep;
       return;
     }
-    if (!this._open) {
+    if (this._unsub !== session) {
       return;
     }
     // Core commissioned the device itself, so the app reports no finish.
-    // Keep showing the spinner until watchForNewMatterDevice fires.
     this._commissioningFinished = true;
     this._maybeShowDeviceAdded();
   }
