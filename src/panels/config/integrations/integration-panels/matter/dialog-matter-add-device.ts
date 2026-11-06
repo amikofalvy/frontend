@@ -102,10 +102,15 @@ class DialogMatterAddDevice extends LitElement {
 
   private _mainEntityFetched = false;
 
+  // A recommissioned node joins an existing device, next to the entities of
+  // its earlier nodes; only entities created after opening belong to it.
+  private _entityIdsAtOpen = new Set<string>();
+
   private _unsub?: UnsubscribeFunc;
 
   public showDialog(): void {
     this._open = true;
+    this._entityIdsAtOpen = new Set(Object.keys(this.hass.entities));
     this._unsub = watchForNewMatterDevice(this.hass, (device) => {
       // make sure a refresh of the page will navigate to the device page, old iOS apps will refresh the webview when commissioning is done
       setRefreshUrl(`/config/devices/device/${device.id}`);
@@ -182,7 +187,11 @@ class DialogMatterAddDevice extends LitElement {
     if (!this._newDevice || this._mainEntityFetched) return;
 
     const entityIds = Object.values(this.hass.entities)
-      .filter((e) => e.device_id === this._newDevice!.id)
+      .filter(
+        (e) =>
+          e.device_id === this._newDevice!.id &&
+          !this._entityIdsAtOpen.has(e.entity_id)
+      )
       .map((e) => e.entity_id);
 
     if (!entityIds.length) return;
@@ -293,8 +302,15 @@ class DialogMatterAddDevice extends LitElement {
         duration: 2000,
       });
       this._step = savedStep;
+      return;
     }
-    // On success, keep showing commissioning spinner until watchForNewMatterDevice fires
+    if (!this._open) {
+      return;
+    }
+    // Core commissioned the device itself, so the app reports no finish.
+    // Keep showing the spinner until watchForNewMatterDevice fires.
+    this._commissioningFinished = true;
+    this._maybeShowDeviceAdded();
   }
 
   private async _finishDeviceAdded(): Promise<void> {

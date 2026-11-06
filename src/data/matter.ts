@@ -204,36 +204,35 @@ export const startExternalCommissioning = async (hass: HomeAssistant) => {
   });
 };
 
+const matterNodeIdentifiers = (device: DeviceRegistryEntry) =>
+  device.identifiers
+    .filter(([domain, id]) => domain === "matter" && id.startsWith("deviceid_"))
+    .map(([, id]) => id);
+
+// Watches for a new Matter node rather than a new device: core merges a
+// recommissioned node into the existing device that shares its serial number.
 export const watchForNewMatterDevice = (
   hass: HomeAssistant,
   callback: (device: DeviceRegistryEntry) => void
 ): UnsubscribeFunc => {
-  let curMatterDevices: Set<string> | undefined;
+  let knownNodes: Set<string> | undefined;
   const unsubDeviceReg = subscribeDeviceRegistry(hass.connection, (entries) => {
-    if (!curMatterDevices) {
-      curMatterDevices = new Set(
-        Object.values(entries)
-          .filter((device) =>
-            device.identifiers.find((identifier) => identifier[0] === "matter")
-          )
-          .map((device) => device.id)
-      );
+    if (!knownNodes) {
+      knownNodes = new Set(entries.flatMap(matterNodeIdentifiers));
       return;
     }
-    const newMatterDevices = Object.values(entries).filter(
-      (device) =>
-        device.identifiers.find((identifier) => identifier[0] === "matter") &&
-        !curMatterDevices!.has(device.id)
+    const device = entries.find((entry) =>
+      matterNodeIdentifiers(entry).some((id) => !knownNodes!.has(id))
     );
-    if (newMatterDevices.length) {
+    if (device) {
       unsubDeviceReg();
-      curMatterDevices = undefined;
-      callback(newMatterDevices[0]);
+      knownNodes = undefined;
+      callback(device);
     }
   });
   return () => {
     unsubDeviceReg();
-    curMatterDevices = undefined;
+    knownNodes = undefined;
   };
 };
 
